@@ -1,52 +1,69 @@
 import streamlit as st
-import pandas as pd
-import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 import joblib
+import re
+import string
 
-# Ensure necessary NLTK resources are available
-nltk.download('stopwords')
-nltk.download('wordnet')
+import warnings
+warnings.filterwarnings('ignore')
 
-# Load the TF-IDF vectorizer and models
-tfidf = joblib.load('assets/models/tfidf_vectorizer.pkl')
-models = {
-    "Multinomial Naive Bayes": joblib.load('assets/models/MultinomialNB_model.pkl'),
-    "Decision Tree": joblib.load('assets/models/DecisionTree_model.pkl'),
-    "Random Forest": joblib.load('assets/models/RandomForest_model.pkl')
-}
+from nltk import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
 
-# Text preprocessing function
+
+exclude = string.punctuation
+
+model_path = 'assets/models/spam_classification.joblib'
+vectorizer_path = 'assets/models/tfidf_vectorizer.pkl'
+
+model = joblib.load(model_path)
+tfidf = joblib.load(vectorizer_path)
+
+
 def preprocess_text(text):
-    wnl = WordNetLemmatizer()
-    text = re.sub(pattern='[^a-zA-Z]', repl=' ', string=text)
+    # Convert to lowercase
     text = text.lower()
-    words = text.split()
-    filtered_words = [word for word in words if word not in set(stopwords.words('english'))]
-    lemmatized_words = [wnl.lemmatize(word) for word in filtered_words]
-    return ' '.join(lemmatized_words)
+    
+    # Remove URLs
+    re_url = re.compile(r'https?://\S+|www\.\S+')
+    text = re_url.sub('', text)
+    
+    # Remove punctuation
+    exclude = set(string.punctuation)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    
+    # Tokenize
+    words = word_tokenize(text)
+    
+    # Remove stopwords
+    stopwrds = set(stopwords.words('english'))
+    words = [word for word in words if word not in stopwrds]
+    
+    # Perform stemming
+    stemmer = PorterStemmer()
+    words = [stemmer.stem(word) for word in words]
+    
+    return ' '.join(words)
 
-# Prediction function
-def predict_spam(model, message):
-    message = preprocess_text(message)
-    message_vec = tfidf.transform([message]).toarray()
-    return model.predict(message_vec)
-
-# Streamlit interface
-st.title("SMS Spam Detection")
-
-# Select model
-model_name = st.selectbox("Choose a model", list(models.keys()))
-model = models[model_name]
-
-# Input message
-sample_message = st.text_area("Enter a message to classify", "You could be entitled up to £3,160 in compensation from mis-sold PPI on a credit card or loan. Please reply PPI for info or STOP to opt out.")
-
-if st.button("Predict"):
-    prediction = predict_spam(model, sample_message)
-    if prediction[0] == 1:
-        st.write("Gotcha! This is a SPAM message.")
+def predict_mess(text):
+    message = preprocess_text(text)
+    vectorized_mess = tfidf.transform([message]).toarray()
+    prediction = model.predict(vectorized_mess)
+    # st.write(prediction)
+    if prediction == 0:
+        st.write("message is spam")
     else:
-        st.write("This is a HAM (normal) message.")
+        st.write("message is ham")
+
+def main():
+    st.title("Spam Classification")
+    st.write("This is a simple spam classification model using Random Forest")
+    # st.write(model)
+    # st.write(tfidf)
+    raw_text = st.text_input("Enter text to classify")
+    if st.button("Predict"):
+        predict_mess(raw_text)
+
+
+if __name__ == "__main__":
+    main()
